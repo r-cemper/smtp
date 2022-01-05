@@ -1,9 +1,3 @@
- ~~~
- This is a coding example working on IRIS 2020.1
- It will not be kept in sync with new versions      
- It is also NOT serviced by InterSystems Support !   
-~~~ 
-
 The offer of ZPM is growing daily and the shortnames and  
 acronyms of the offer are sometimes hard to understand and   
 also hard to type with my lazy fingers.
