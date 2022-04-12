@@ -65,5 +65,14 @@ zpm install cache-fast-json
 
 ~~~
 
-[Article in DC](https://community.intersystems.com/post/zpmshow-helper-tired-fingers)
-_ _ _ [Video](https://youtu.be/T9D5CiLwu9o) 
+[Article in DC](https://community.intersystems.com/post/zpmshow-helper-tired-fingers)    
+[Video](https://youtu.be/T9D5CiLwu9o) 
+
+[Demo Server SMP](https://zpmshow.demo.community.intersystems.com/csp/sys/UtilHome.csp)   
+[Demo Server WebTerminal](https://zpmshow.demo.community.intersystems.com/terminal/)    
+        
+**Code Quality**   
+<img width="85%" src="
+https://openexchange.intersystems.com/mp/img/packages/671/screenshots/4bh7tyapellnv0cjgw34riapcfo.jpg
+">
+
