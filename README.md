@@ -1,6 +1,6 @@
 The offer of ZPM is growing daily and the shortnames and  
 acronyms of the offer are sometimes hard to understand and   
-also hard to type with my lazy fingers.
+also hard to type with my lazy fingers.   
 
 So I decided to have   
 - a listing with the __descriptions__ from repository,   
