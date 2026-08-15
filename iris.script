@@ -1,6 +1,6 @@
-zn "%SYS"
-Do ##class(Security.Users).UnExpireUserPasswords("*")
+zn "%SYS" 
+do ##class(Security.Users).UnExpireUserPasswords("*")
+zpm "install passwordless"
 zn "USER"
-zpm "install webterminal"
-zpm "load /opt/irisbuild/ -v":1
+zwrite $system.OBJ.Import("/home/irisowner/dev/smtp.xml","ck")
 halt

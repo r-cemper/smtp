@@ -1,0 +1,1132 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Export generator="IRIS" version="26" zv="IRIS for Windows (x86-64) 2026.1 (Build 234U)" ts="2026-08-15 09:42:05">
+<Routine name="Mail" type="INC" timestamp="67793,82940.9377479"><![CDATA[
+#include Ensemble
+
+#; Mail
+#Define smtpOnAfterGR(%l)	Do ..OnAfterGetResponse(%l)
+#Define Space				$Char(32)
+#Define MMfindDOMAIN		"MAILDOMAIN"
+#Define MailDomain(%t,%md)	$REPLACE(%t,$$$MMfindDOMAIN,%md)
+#Define MMReady				"220 MAILDOMAIN iris-mail 8.0 ready"
+#Define MMResponseData		"354 Enter data"
+#Define MMResponseDefault	"250 OK"
+#Define MMResponseHELO		"250 OK MAILDOMAIN [8.0,DUP,SER,FTP]"
+#Define MMResponseDataAcpt  "250 'data' accepted"
+#Define MMResponseQUIT		"221 MAILDOMAIN Service closing transmission channel"
+#Define MMResponseTURN		"502 MAILDOMAIN has no messages to export"
+#Define terminator			$Char(10)
+#Define timeout				1
+]]></Routine>
+
+
+<Class name="mail.MailRequest">
+<StorageStrategy/>
+<Super>Ens.StreamContainer,Ens.Request</Super>
+<TimeChanged>67796,56169.2520102</TimeChanged>
+<TimeCreated>67793,82941.7219184</TimeCreated>
+
+<Property name="MessageID">
+<Description>
+Message ID for Email message.</Description>
+<Type>%String</Type>
+</Property>
+
+<Property name="MailFrom">
+<Description>
+Who the message is from </Description>
+<Type>%String</Type>
+<Parameter name="MAXLEN" value="1000"/>
+</Property>
+
+<Property name="RcptTo">
+<Description>
+To for message, list of names to which message will be sent (SMTP) or was sent (POP3) </Description>
+<Type>%String</Type>
+<Parameter name="MAXLEN" value="1000"/>
+</Property>
+
+<Property name="Sender">
+<Description>
+Who actually sent the message </Description>
+<Type>%String</Type>
+<Parameter name="MAXLEN" value="1000"/>
+</Property>
+
+<Property name="SenderMessageID">
+<Description>
+Message ID for Email message.</Description>
+<Type>%String</Type>
+</Property>
+
+<Property name="Subject">
+<Description>
+Subject of message </Description>
+<Type>%String</Type>
+<Parameter name="MAXLEN" value="1000"/>
+</Property>
+
+<Storage name="Default">
+<Type>%Storage.Persistent</Type>
+<DefaultData>MailRequestDefaultData</DefaultData>
+<Data name="MailRequestDefaultData">
+<Structure>listnode</Structure>
+<Subscript>"MailRequest"</Subscript>
+<Value name="1">
+<Value>MessageID</Value>
+</Value>
+<Value name="2">
+<Value>MailFrom</Value>
+</Value>
+<Value name="3">
+<Value>RcptTo</Value>
+</Value>
+<Value name="4">
+<Value>Sender</Value>
+</Value>
+<Value name="5">
+<Value>SenderMessageID</Value>
+</Value>
+<Value name="6">
+<Value>Subject</Value>
+</Value>
+</Data>
+</Storage>
+</Class>
+
+
+<Class name="mail.Receive">
+<Super>Ens.Production</Super>
+<TimeChanged>67796,78510.5150212</TimeChanged>
+<TimeCreated>67793,83099.7994224</TimeCreated>
+
+<XData name="ProductionDefinition">
+<Data><![CDATA[
+<Production Name="mail.Receive" TestingEnabled="false" LogGeneralTraceEvents="false">
+  <Description></Description>
+  <ActorPoolSize>2</ActorPoolSize>
+  <Item Name="Mail Service" Category="" ClassName="mail.Service" PoolSize="1" Enabled="true" Foreground="false" Comment="" LogTraceEvents="true" Schedule="">
+    <Setting Target="Host" Name="ArchiveIO">1</Setting>
+    <Setting Target="Adapter" Name="JobPerConnection">0</Setting>
+    <Setting Target="Adapter" Name="Port">30025</Setting>
+    <Setting Target="Host" Name="TargetConfigNames"></Setting>
+    <Setting Target="Host" Name="AlertOnError">1</Setting>
+    <Setting Target="Host" Name="MailDomain">iris.home</Setting>
+  </Item>
+</Production>
+]]></Data>
+</XData>
+</Class>
+
+
+<Class name="mail.Service">
+<IncludeCode>Mail</IncludeCode>
+<ProcedureBlock>1</ProcedureBlock>
+<Super>Ens.BusinessService</Super>
+<System>4</System>
+<TimeChanged>67796,81006.8190864</TimeChanged>
+<TimeCreated>67793,82941.8601004</TimeCreated>
+
+<Parameter name="ADAPTER">
+<Default>mail.TCPTextLineInboundAdapter</Default>
+</Parameter>
+
+<Property name="TargetConfigNames">
+<Description>
+Configuration item(s) to which to send file stream messages</Description>
+<Type>%String</Type>
+<Parameter name="MAXLEN" value="1000"/>
+</Property>
+
+<Property name="SendAcknowledgement">
+<Description>
+Should we let the client know that we got the message?</Description>
+<Type>%Boolean</Type>
+<InitialExpression>1</InitialExpression>
+</Property>
+
+<Property name="MailDomain">
+<Description>
+Host domain to use for SMTP communication</Description>
+<Type>%String</Type>
+</Property>
+
+<Parameter name="SETTINGS">
+<Default><![CDATA[MailDomain,TargetConfigNames:Basic:selector?multiSelect=1&context={Ens.ContextSearch/ProductionItems?targets=1&productionName=@productionId}]]></Default>
+</Parameter>
+
+<Parameter name="CONTAINERCLASS">
+<Default>Ens.StreamContainer</Default>
+</Parameter>
+
+<Method name="OnProcessInput">
+<Description>
+pInput contains the incoming line of text
+pOutput contains the outgoing response (if any)</Description>
+<FormalSpec>pInput:Ens.StringContainer,pOutput:Ens.StringContainer</FormalSpec>
+<ReturnType>%Status</ReturnType>
+<Implementation><![CDATA[
+	#Dim %EmailRequest As mail.MailRequest
+	If '$Data(%EmailRequest) Set %EmailRequest = ##class(mail.MailRequest).%New()
+	If '$IsObject(%EmailRequest) Set %EmailRequest = ##class(mail.MailRequest).%New()
+	Set $ZT = "EXCEPTION"
+	Set pResponse = ""
+	Set tDataDone = 0
+	Set tLine = ""
+	Set tSC=$$$OK
+	Do {
+		Set tLine = pInput.StringValue
+			if tLine["EHLO",$i(^txt) set %lin=0
+		    set ^txt(^txt,$i(%lin))=tLine
+		Do {
+			Set uLine = $ZCONVERT($Get(tLine),"U")
+			Set tMailDomain = ..MailDomain
+			Set pResponse = $$$MailDomain($$$MMResponseDefault,tMailDomain)
+
+			If (%DataStarted > 0) {
+				If (uLine = ".") {
+					Set tDataDone = 1
+					Set %DataStarted = 0
+					Set pResponse = $$$MailDomain($$$MMResponseDataAcpt,tMailDomain)
+				} Else {
+					Set pResponse = ""
+					If (%DataStarted > 1) {
+						Set tStream = %EmailRequest.StreamGet()
+						If '$IsObject(tStream) Set tStream = ##class(%GlobalCharacterStream).%New()
+						Set tSC = tStream.Write(tLine_$$$terminator)
+						Set tSC = %EmailRequest.StreamSet(tStream)
+					}
+					Else {
+						If (uLine = "") {
+							Set %DataStarted = 2  // Ready to Write to Stream
+						} Else {
+							If ($Extract(uLine,1,11) = "MESSAGE-ID:") {
+								Set %EmailRequest.SenderMessageID = $Extract(tLine,12,*)
+							}
+							If ($Extract(uLine,1,8) = "SUBJECT:") {
+								Set %EmailRequest.Subject = $Extract(tLine,9,*)
+							}
+						}
+					}
+					Set pResponse = ""
+					Quit
+				}
+				Quit
+			}
+
+			If ($Piece(uLine,$$$Space,1) = "DATA") {
+				Set %DataStarted=1
+				Set pResponse = $$$MailDomain($$$MMResponseData,tMailDomain)
+			}
+
+			If $Piece(uLine,$$$Space,1) = "HELO" {
+				Set pResponse = $$$MailDomain($$$MMResponseHELO,tMailDomain)
+			}
+			If $Piece(uLine,$$$Space,1) = "NOOP" {
+				Set pResponse = $$$MailDomain($$$MMResponseDefault,tMailDomain)
+			}
+			If $Piece(uLine,$$$Space,1) = "MAIL" {
+				Set %EmailRequest.MessageID = ##class(mail.Util).GenerateMessageID(tMailDomain)
+				Set pResponse = "250 OK "_##class(mail.Util).GetFormattedMessageID(%EmailRequest.MessageID,tMailDomain)
+			}
+			If $Piece(uLine,$$$Space,1) = "RCPT" {
+				// There may not be a space after TO:
+				If $Extract(uLine,6,8) = "TO:" {
+					Set tTo = $Extract(uLine,9,*)
+					Set pResponse = "250 'RCPT' accepted"
+				}
+			}
+			If $Piece(uLine,$$$Space,1) = "RSET" {
+				Set pResponse = "250"
+			}
+			If $Piece(uLine,$$$Space,1) = "SUBJECT:" {
+				Set %EmailRequest.Subject = $Extract(tLine,9,*)
+				Set pResponse = $$$MailDomain($$$MMResponseDefault,tMailDomain)
+			}
+			If $Piece(uLine,$$$Space,1) = "TURN" {
+				Set pResponse = $$$MailDomain($$$MMResponseTURN,tMailDomain)
+			}
+			If $Piece(uLine,$$$Space,1) = "QUIT" {
+				Set pResponse = $$$MailDomain($$$MMResponseQUIT,tMailDomain)
+			}
+		} While (0)
+		Set pOutput = ##class(Ens.StringContainer).%New(pResponse)
+	} While (0)
+EXIT
+	If (tDataDone = 0) {
+		Quit tSC
+	}
+	// check stream size ?
+	Set tMessageID = %EmailRequest.MessageID
+	$$$SyncCommitSet(tSyncCommit)
+	For iTarget=1:1:$L(..TargetConfigNames, ",") { Set tOneTarget=$ZStrip($P(..TargetConfigNames,",",iTarget),"<>W")  Continue:""=tOneTarget
+		Set tSC1=..SendRequestAsync(tOneTarget,%EmailRequest)  Set:$$$ISERR(tSC1) tSC=$$$ADDSC(tSC,tSC1)
+	}
+	$$$SyncCommitClear(tSyncCommit)
+	KILL %EmailRequest
+	Quit tSC
+EXCEPTION
+	Set $ZT = ""
+	Set tSC = $$$EnsSystemError
+	Goto EXIT
+]]></Implementation>
+</Method>
+
+<Method name="OnConnect">
+<FormalSpec>pTimeout:%Numeric</FormalSpec>
+<ReturnType>%Status</ReturnType>
+<Implementation><![CDATA[	Quit 1
+]]></Implementation>
+</Method>
+
+<Method name="OnError">
+<Description>
+Override this method to provide custom error handling. Return 0 means skip standard AlertOnError behavior.</Description>
+<FormalSpec>pStatus:%Status</FormalSpec>
+<ReturnType>%Boolean</ReturnType>
+<Implementation><![CDATA[	Quit 1
+]]></Implementation>
+</Method>
+
+<Method name="OnGetConnections">
+<Description>
+Return an array of connections for drawing lines on the config diagram</Description>
+<ClassMethod>1</ClassMethod>
+<FormalSpec>*pArray:%String,pItem:Ens.Config.Item</FormalSpec>
+<Implementation><![CDATA[
+	Do ##super(.pArray,pItem)
+	If pItem.GetModifiedSetting("TargetConfigNames",.tValue) {
+		For i=1:1:$L(tValue,",") { Set tOne=$ZStrip($P(tValue,",",i),"<>W")  Continue:""=tOne  Set pArray(tOne)="" }
+	}
+]]></Implementation>
+</Method>
+</Class>
+
+
+<Class name="mail.TCPInboundAdapter">
+<Abstract>1</Abstract>
+<ClassType/>
+<IncludeCode>Mail</IncludeCode>
+<ProcedureBlock>1</ProcedureBlock>
+<Super>Ens.InboundAdapter,EnsLib.TCP.Common</Super>
+<System>4</System>
+<TimeChanged>67796,81956.4839406</TimeChanged>
+<TimeCreated>67793,82941.9032863</TimeCreated>
+<Inheritance>right</Inheritance>
+
+<Property name="Port">
+<Description>
+TCP Port to connect to (integer value below 65536), may be prepended with @AgentName:</Description>
+<Type>Ens.DataType.TCPAgentPort</Type>
+<Required>1</Required>
+</Property>
+
+<Property name="JobPerConnection">
+<Description><![CDATA[
+Spawn a new Job to handle each incoming TCP connection. Allows simultaneous handling of multiple connections. <br/>
+Note that the performance of this setting can be affected by changing the configured QSize setting of this adapter and by configuring Job Servers as a system configuration option.
+Note also that when JobPerConnection=1, PoolSize is used to limit the number of connection jobs if it is configured with a value greater than 1.]]></Description>
+<Type>%Boolean</Type>
+<InitialExpression>1</InitialExpression>
+</Property>
+
+<Property name="AllowedIPAddresses">
+<Description><![CDATA[
+Optional comma-separated list of remote IP addresses to accept connections from.<p>
+You may enter a comma-separated list of remote IP addresses to accept connections from,
+with IP addresses in dotted decimal form for IPV4 and colon-hex form for IPV6, with optional :port for IPV4 and |port for IPV6, e.g.<p>
+192.168.1.22, 192.168.1.22:3298 or fe80::4c60:9595:7fb3:8139, fe80::4c60:9595:7fb3:8139|3298.<p>
+If :port or |port is specified, connections from other ports at the associated address will be refused.<p>
+If AllowedIPAddresses starts with a '!', the Adapter will initiate a connection to the specified address. In this case only one address may be given.
+If a port is included, it will supersede the value of the Port setting; otherwise the Port setting will be used to connect to the remote system.<p>
+Leaving this value empty means connections will be accepted from any remote IP address.]]></Description>
+<Type>%String</Type>
+<Parameter name="MAXLEN" value="1000"/>
+</Property>
+
+<Property name="QSize">
+<Description><![CDATA[
+How many incoming connections should the OS hold open on our behalf until we get around to dealing with them? <p>
+Set to 0 if only one connection at a time is expected. Set to a large number if many clients will connecting rapidly.]]></Description>
+<Type>%Integer</Type>
+<InitialExpression>100</InitialExpression>
+<Parameter name="MAXVAL" value="1000"/>
+<Parameter name="MINVAL" value="0"/>
+</Property>
+
+<Parameter name="SETTINGS">
+<Default>Port:Basic,JobPerConnection:Connection,AllowedIPAddresses:Connection,QSize:Connection</Default>
+</Parameter>
+
+<Parameter name="OpenTimeout">
+<Type>%Numeric</Type>
+<Default>15</Default>
+</Parameter>
+
+<Property name="%outIPAddr">
+<Type>%String</Type>
+</Property>
+
+<Parameter name="SINGLEPOOLJOB">
+<Description>
+Force a single listener job regardless of PoolSize setting</Description>
+<Type>%Boolean</Type>
+<Default>1</Default>
+</Parameter>
+
+<Property name="%warnedConnect">
+<Type>%String</Type>
+<Internal>1</Internal>
+</Property>
+
+<Property name="%PoolLimit">
+<Type>%Integer</Type>
+</Property>
+
+<Property name="%warnedLimit">
+<Type>%Boolean</Type>
+<Internal>1</Internal>
+</Property>
+
+<Property name="%tracedLimit">
+<Type>%Boolean</Type>
+<Internal>1</Internal>
+</Property>
+
+<Property name="%OutDataReady">
+<Description>
+In your Service or subclass, set this flag to force a "!" outbound connection attempt in OnTask even if StayConnected is not -1.</Description>
+<Type>%Boolean</Type>
+<Internal>1</Internal>
+<InitialExpression>1</InitialExpression>
+</Property>
+
+<Method name="ConnectedSet">
+<FormalSpec>pValue:%Boolean</FormalSpec>
+<ReturnType>%Status</ReturnType>
+<Implementation><![CDATA[
+	Set i%Connected=pValue
+	If ""=..%outIPAddr { ; normal listen-for-connection mode
+		#; empty $zu(53) means it's not a tcp spawned child worker job
+		Set:'pValue&&..JobPerConnection&&(""=$ZU(53))&&(..QSize>0) pValue="." ; marker for listening mode
+	}
+	$$$SetJobMonitor(..BusinessHost.%ConfigName,$$$SystemName_":"_$Job,$$$eMonitorConnected,pValue_"|"_$$$timeUTC_"|"_..IOAddr)
+	Quit $$$OK
+]]></Implementation>
+</Method>
+
+<Method name="OnInit">
+<ReturnType>%Status</ReturnType>
+<Implementation><![CDATA[
+	Set %DataStarted = 0
+	Set %EmailRequest = ""
+	Quit:$G($$$EnsJobLocal("TCPIn.OutsideJob")) $$$OK ; do nothing if SOAP CSP job
+	Set tSC=##super()  Quit:$$$ISERR(tSC) tSC
+	Set ..OldIO=$IO  Do ##class(Ens.Util.Trace).SetTraceDevice(..OldIO)
+	Set ..LocalInterface=$ZStrip($P(..LocalInterface,"("),"*W")
+	If 0=..BusinessHost.%GetParameter("LOGCONNECTIONS") Set ..%logConnections=0
+	Do $ZU(68,57,1) ; turn on PSW2NOTHROTTLE bit to bypass throttle
+	Set:..StayConnected>0 ..KeepaliveInterval=..StayConnected
+	
+	#; $ZU(53) means it's a tcp spawned job
+	Set tDevice = $ZU(53)
+	If ""'=tDevice {
+		#; initialize for spawned TCP job (only possible in normal listen-for-connection mode)
+		#; Job Per Connection Setting = 1
+		Set ..Device = tDevice
+		If ""=..SSLConfig {
+			Use tDevice:(::..#Mode_"-D":..Terminators:..#InputBufferSize:..#OutputBufferSize:0:/TCPNOXY)
+		} Else {
+			Use tDevice:(::..#Mode_"-D":..Terminators:..#InputBufferSize:..#OutputBufferSize:0:/TCPNOXY:/SSL=..SSLConfig)
+		}
+		Do SetIO^%NLS("RAW") ; turn off translation mode
+		Set tRemote=$zu(111,0), ps=$S($L(tRemote)>6:"|",1:":"), tRemote=$$$IPBinaryToText($E(tRemote,1,*-2))_ps_$ZWAscii($Reverse($E(tRemote,*-1,*)))
+		Set ..IOAddr=..Port_"<-"_tRemote_$S(""=..SSLConfig:"",1:"/SSL="_..SSLConfig), ..Connected=1
+		
+		Set tSC = ..WriteLine($$$MailDomain($$$MMReady,..BusinessHost.MailDomain))
+		Use ..OldIO
+		Set:'$IsObject(..Socket) ..Socket=..SocketNewObject()
+		Do ..Socket.Attach(..Device)
+		Set:""'=..Terminators ..Socket.LineTerminator=..Terminators
+		Set $ZT="OnConnectTrap"
+		Set tSC=..BusinessHost.OnConnect(0)  If $$$ISERR(tSC) Do ..Disconnect()  Quit tSC
+OnConnectTrap
+	} Else {
+		#; initialize for main TCP listener job
+		#; Job Per Connection Setting = 0
+		If "!"'=$E(..AllowedIPAddresses) { ; normal listen-for-connection mode
+			Set ..%PoolLimit=$$$ConfigPoolSize(..BusinessHost.%ConfigName)  Kill ^CacheTemp.EnsTCPJobs($Job)
+			Set ..%outIPAddr=""
+			Set ..Device="|TCP|"_..Port
+			If ..QSize>0 {
+				If ""=..SSLConfig {
+					Open ..Device:(:..Port:..#Mode_"A-D":..Terminators:..#InputBufferSize:..#OutputBufferSize:..QSize:/TCPNOXY:/BINDTO=..LocalInterface):..#OpenTimeout  Set tOpenFailed='$Test
+				} Else {
+					Open ..Device:(:..Port:..#Mode_"A-D":..Terminators:..#InputBufferSize:..#OutputBufferSize:..QSize:/TCPNOXY:/BINDTO=..LocalInterface:/SSL=..SSLConfig):..#OpenTimeout  Set tOpenFailed='$Test
+				}
+			} Else {
+				If ""=..SSLConfig {
+					Open ..Device:(:..Port:..#Mode_"A-D":..Terminators:..#InputBufferSize:..#OutputBufferSize:1:/CLOSELISTEN:/TCPNOXY:/BINDTO=..LocalInterface):..#OpenTimeout  Set tOpenFailed='$Test
+				} Else {
+					Open ..Device:(:..Port:..#Mode_"A-D":..Terminators:..#InputBufferSize:..#OutputBufferSize:1:/CLOSELISTEN:/TCPNOXY:/BINDTO=..LocalInterface:/SSL=..SSLConfig):..#OpenTimeout  Set tOpenFailed='$Test
+				}
+			}
+			If tOpenFailed {
+				Set tDevice=..Device, ..Device=""
+				Quit $$$EnsError($$$EnsErrTCPListen,..Port,..#OpenTimeout,"Open """_tDevice_""":(:"_..Port_":"""_..#Mode_"A-D"_""":"_..Terminators_":"_..#InputBufferSize_":"_..#OutputBufferSize_":"_$S(..QSize>0:..QSize,1:"1:/CLOSELISTEN")_":/TCPNOXY:"_$S(""=..SSLConfig:"",1:"/SSL="_..SSLConfig)_"):"_..#OpenTimeout)
+			}
+			Use ..Device
+			Do SetIO^%NLS("RAW") ; turn off translation mode
+			Use ..OldIO
+		} Else { ; If in connect-and-read mode
+			Set tAddr=$P($E(..AllowedIPAddresses,2,*),","), ps=$S($L(tAddr,":")<=2:":",1:"|"), tPort=$P(tAddr,ps,2)
+			Set ..%outIPAddr=$P(tAddr,ps)  Set:""'=tPort ..Port=tPort
+			If ..StayConnected {
+				Set tSC=..ConnectOut(..CallInterval)
+				If $$$ISERR(tSC) {
+					Set tTxt=$$$StatusDisplayString(tSC)
+					$$$LOGWARNING(tTxt)
+					Set ..%warnedConnect=tTxt // timeout is not fatal at this point, but do log it
+				}
+			}
+		}
+		If ..StayConnected>=0 Set ..BusinessHost.%LastReportedError=$$$StatusDisplayString($$$ERROR($$$EnsErrGeneral,"No Connection made "_$S(""'=..%outIPAddr:"to "_..%outIPAddr_$S(..%outIPAddr[":":"|",1:":"), 1:"on port ")_..Port_" within interval "_..CallInterval)) ; Prime %LastReportedError so it doesn't alert the first time if no connection arrives provided connection not required
+	}
+	Quit $$$OK
+]]></Implementation>
+</Method>
+
+<Method name="OnTearDown">
+<ReturnType>%Status</ReturnType>
+<Implementation><![CDATA[
+	Quit:""=..Device $$$OK
+	Do ..Disconnect()
+	Quit:""=..Device $$$OK
+	Set $ZT="Trap"
+	Use ..OldIO
+	Close ..Device
+Exit
+	Quit $$$OK
+Trap
+	Set $ZT="",tSC=$$$EnsSystemError
+	Goto Exit
+]]></Implementation>
+</Method>
+
+<Method name="OnTask">
+<ReturnType>%Status</ReturnType>
+<Implementation><![CDATA[
+	If ""'=$ZU(53) {
+		Set tSC=$$$OK, $ZT="ChildTrap"
+		Use ..Device
+		Set $ZT="OCTrap"
+		Set tSC=..OnConnected()
+		Set $ZT="ChildTrap"
+		If '..StayConnected||$$$ISERR(tSC) { Do ..Disconnect() }
+		Else { Do ..TestConnection() }
+		If '..Connected {
+			Set ..BusinessHost.%QuitTask=1
+			Set tTxt="Closing TCP Connection Job"
+			If ..%logConnections {
+				$$$LOGINFO(tTxt)
+			}
+			Else {
+			}
+		}
+	} Else {
+		Set tSC=$$$OK, $ZT="Trap"
+		Do {
+			Use:..Connected ..Device
+			Do:..Connected ..TestConnection()
+			Set tWasConnected=..Connected
+			If '..Connected {
+				If ""=..%outIPAddr {
+					If ..%PoolLimit<=1 || (..%PoolLimit>$G(^CacheTemp.EnsTCPJobs($Job,"children"))) {
+						If ""=..Device {
+							Set ..Device="|TCP|"_..Port
+							If ..QSize>0 {
+								If ""=..SSLConfig {
+									Open ..Device:(:..Port:..#Mode_"A-D":..Terminators:..#InputBufferSize:..#OutputBufferSize:..QSize:/TCPNOXY:/BINDTO=..LocalInterface):..#OpenTimeout  Set tOpenFailed='$Test
+								} Else {
+									Open ..Device:(:..Port:..#Mode_"A-D":..Terminators:..#InputBufferSize:..#OutputBufferSize:..QSize:/TCPNOXY:/BINDTO=..LocalInterface:/SSL=..SSLConfig):..#OpenTimeout  Set tOpenFailed='$Test
+								}
+							} Else {
+								If ""=..SSLConfig {
+									Open ..Device:(:..Port:..#Mode_"A-D":..Terminators:..#InputBufferSize:..#OutputBufferSize:1:/CLOSELISTEN:/TCPNOXY:/BINDTO=..LocalInterface):..#OpenTimeout  Set tOpenFailed='$Test
+								} Else {
+									Open ..Device:(:..Port:..#Mode_"A-D":..Terminators:..#InputBufferSize:..#OutputBufferSize:1:/CLOSELISTEN:/TCPNOXY:/BINDTO=..LocalInterface:/SSL=..SSLConfig):..#OpenTimeout  Set tOpenFailed='$Test
+								}
+							}
+							If tOpenFailed {
+								Set tDevice=..Device, ..Device=""
+								Set tSC=$$$EnsError($$$EnsErrTCPListen,..Port,..#OpenTimeout,"Open """_tDevice_""":(:"_..Port_":"""_..#Mode_"A-D"_""":"_..Terminators_":"_..#InputBufferSize_":"_..#OutputBufferSize_":"_$S(..QSize>0:..QSize,1:"1:/CLOSELISTEN")_":/TCPNOXY:"_$S(""=..SSLConfig:"",1:"/SSL="_..SSLConfig)_"):"_..#OpenTimeout)
+								Quit
+							}
+						}
+						$$$catTRACE("connwait","Waiting for connection on port "_..Port_" with timeout "_..CallInterval)
+						$$$SetJobMonitor(..BusinessHost.%ConfigName,$$$SystemName_":"_$Job,$$$eMonitorConnected,".|"_$$$timeUTC)
+						Use ..Device
+						Read tDummy:..CallInterval Set tNewConnection=$Test
+						If tNewConnection {
+							Set tIPOK=##class(%IO.ServerSocket).remoteIPAllowed(..AllowedIPAddresses,.tRemote,.tSC1)
+							If tIPOK { Set ..IOAddr=..Port_"<-"_tRemote_$S(""=..SSLConfig:"",1:"/SSL="_..SSLConfig), ..Connected=1 }
+							Else { 
+								Write *-2
+								$$$LOGWARNING("Rejected connection attempt on port "_..Port_" from "_tRemote_" which was not found in AllowedIPAddresses list '"_..AllowedIPAddresses_"'"_$S($$$ISOK(tSC1):"",1:" :"_$$$StatusDisplayString(tSC1)))
+							}
+							Set ..%tracedLimit=0 ; reset when below pool limit
+						}
+					} Else { ; limit reached; don't accept new connections
+						If '..%warnedLimit { 
+							Set ..%warnedLimit=1
+							$$$LOGWARNING("Not accepting new connections because limit of "_..%PoolLimit_" connection jobs has been reached")
+						}
+						ElseIf '..%tracedLimit {
+							Set ..%tracedLimit=1
+						}
+					}
+				}
+				Else { ; If in connect-and-read mode
+					If ..StayConnected=-1 || ..%OutDataReady {
+						Set tSC=..ConnectOut(..CallInterval)
+						If $$$ISERR(tSC) {
+							Set tTxt=$$$StatusDisplayString(tSC)
+							If tTxt'=..%warnedConnect {
+								$$$LOGWARNING(tTxt)
+								Set ..%warnedConnect=tTxt
+							}
+							Else {
+								$$$catTRACE("connwait",tTxt)
+							}
+							Set tSC=$$$OK // timeout is not fatal at this point, but do log it
+						} Else { Set ..%warnedConnect="" }
+					} Else {
+						$$$catTRACE("connwait","Not attempting to connect out because no output data is ready")
+					}
+				}
+			}
+			If ..Connected {
+				If 'tWasConnected {
+					Set tTxt="New connection"_$S(""=..%outIPAddr:" on port "_..Port_" from "_tRemote, 1:" to "_..%outIPAddr_$S(..%outIPAddr[":":"|",1:":")_..Port)
+					If ..%logConnections { $$$LOGINFO(tTxt) } Else { $$$TRACE(tTxt) }
+					If ""=..%outIPAddr {
+						If ..JobPerConnection {
+							Job ClassMethod^%apiOBJ(..%ClassName(1),"connectedJob",..BusinessHost.%ConfigName,..%PoolLimit):(:65560)
+							Do ..Disconnect()
+							#; don't hang around before listening again
+							Set ..BusinessHost.%WaitForNextCallInterval=0
+							Quit
+						}
+						Set:'$IsObject(..Socket) ..Socket=..SocketNewObject()
+						Do ..Socket.Attach(..Device)
+						Set:""'=..Terminators ..Socket.LineTerminator=..Terminators
+						Set $ZT="OnConnectTrap"
+						Set tSC=..BusinessHost.OnConnect(0)  If $$$ISERR(tSC) Do ..Disconnect()  Quit
+						Set tSC = ..WriteLine($$$MailDomain($$$MMReady,..BusinessHost.MailDomain))
+OnConnectTrap
+					}
+					If ""'=..BusinessHost.%LastReportedError && ("ERROR <Ens>ErrGeneral: No Connection made "=$E(..BusinessHost.%LastReportedError,1,$L("ERROR <Ens>ErrGeneral: No Connection made "))) {
+						Set ..BusinessHost.%LastReportedError=""
+						$$$SetHostMonitor(..BusinessHost.%ConfigName,$$$eMonitorStatus,"OK")
+					}
+				}
+				Set $ZT="OCTrap"
+				set tSC=..OnConnected()
+				Set $ZT="Trap"
+				Do:'..StayConnected ..Disconnect()
+OCContinue
+			} ElseIf ..StayConnected<0&&'..JobPerConnection {
+				Set tSC=$$$ERROR($$$EnsErrGeneral,"No Connection made "_$S(""'=..%outIPAddr:"to "_..%outIPAddr_$S(..%outIPAddr[":":"|",1:":"), 1:"on port ")_..Port_" within interval "_..CallInterval)
+			}
+		} While 0
+	} ; end Else '$zu(53)
+Exit
+	Use ..OldIO
+	$$$ACLOSEIOLOGENTRY(tSC,"StillConnected="_..Connected,$$$NULLOREF)
+	Quit tSC
+Trap
+	Set $ZT="ChildTrap",tSC=$$$SystemError
+	If (""=..%outIPAddr) {
+		$$$LOGINFO("Re-opening Port "_..Port_" to listen for incoming connections")
+		Use ..OldIO
+		Close ..Device
+		If ..QSize>0 {
+			If ""=..SSLConfig {
+				Open ..Device:(:..Port:..#Mode_"A-D":..Terminators:..#InputBufferSize:..#OutputBufferSize:..QSize:/TCPNOXY:/BINDTO=..LocalInterface):..#OpenTimeout  Set tOpenFailed='$Test
+			} Else {
+				Open ..Device:(:..Port:..#Mode_"A-D":..Terminators:..#InputBufferSize:..#OutputBufferSize:..QSize:/TCPNOXY:/BINDTO=..LocalInterface:/SSL=..SSLConfig):..#OpenTimeout  Set tOpenFailed='$Test
+			}
+		} Else {
+			If ""=..SSLConfig {
+				Open ..Device:(:..Port:..#Mode_"A-D":..Terminators:..#InputBufferSize:..#OutputBufferSize:1:/CLOSELISTEN:/TCPNOXY:/BINDTO=..LocalInterface):..#OpenTimeout  Set tOpenFailed='$Test
+			} Else {
+				Open ..Device:(:..Port:..#Mode_"A-D":..Terminators:..#InputBufferSize:..#OutputBufferSize:1:/CLOSELISTEN:/TCPNOXY:/BINDTO=..LocalInterface:/SSL=..SSLConfig):..#OpenTimeout  Set tOpenFailed='$Test
+			}
+		}
+		If tOpenFailed {
+			Set tDevice=..Device, ..Device=""
+			Set tSC=$$$EnsError($$$EnsErrTCPListen,..Port,..#OpenTimeout,"Open """_tDevice_""":(:"_..Port_":"""_..#Mode_"A-D"_""":"_..Terminators_":"_..#InputBufferSize_":"_..#OutputBufferSize_":"_$S(..QSize>0:..QSize,1:"1:/CLOSELISTEN")_":/TCPNOXY:"_$S(""=..SSLConfig:"",1:"/SSL="_..SSLConfig)_"):"_..#OpenTimeout)
+		} Else {
+			Use ..Device
+			Do SetIO^%NLS("RAW") ; turn off translation mode
+		}
+	} Else { ; If in connect-and-read mode
+		Do:..IsReadError(tSC) ..Disconnect()
+	}
+	Goto Exit
+ChildTrap
+	Set $ZT="",tSC=$$$SystemError
+	Goto Exit
+OCTrap
+	Set $ZT="Trap",tSC=$$$SystemError
+	Goto OCContinue
+]]></Implementation>
+</Method>
+
+<Method name="ConnectOut">
+<FormalSpec>pTimeout:%Numeric</FormalSpec>
+<ReturnType>%Status</ReturnType>
+<Implementation><![CDATA[
+	if ..Connected { Do ..TestConnection() Quit:..Connected $$$OK }
+	$$$catTRACE("connwait","Trying to open TCP connection to "_..%outIPAddr_$S(..%outIPAddr[":":"|",1:":")_..Port_":/SSL="_..SSLConfig_" with timeout="_pTimeout)
+	Set $ZT="Trap", tSC=$$$OK
+	Set ..Device="|TCP|"_..Port_"|"_$P($Job,":")
+	If ""=..SSLConfig {
+		Open ..Device:(..%outIPAddr:..Port:..#Mode_"-D":..Terminators:..#InputBufferSize:..#OutputBufferSize:/TCPNOXY:/BINDTO=..LocalInterface):pTimeout  Set tTimedOut='$Test
+	} Else {
+		Open ..Device:(..%outIPAddr:..Port:..#Mode_"-D":..Terminators:..#InputBufferSize:..#OutputBufferSize:/TCPNOXY:/BINDTO=..LocalInterface:/SSL=..SSLConfig):pTimeout  Set tTimedOut='$Test
+	}
+	If tTimedOut {
+		Set $ZT="", ..Device=""
+		Quit $$$ERROR($$$EnsErrOutConnectExpired,pTimeout,"TCP",..%outIPAddr_$S(..%outIPAddr[":":"|",1:":")_..Port)
+	}
+	Use ..Device
+	Set $ZT=""
+	Set ..IOAddr="!"_..%outIPAddr_$S(..%outIPAddr[":":"|",1:":")_..Port_$S(""=..SSLConfig:"",1:"/SSL="_..SSLConfig), ..Connected=1
+	Set tTxt="Opened TCP connection to "_..IOAddr
+	If ..%logConnections { $$$LOGINFO(tTxt) } Else { $$$TRACE(tTxt) }
+	Set:'$IsObject(..Socket) ..Socket=..SocketNewObject()
+	Do ..Socket.Attach(..Device)
+	Set:""'=..Terminators ..Socket.LineTerminator=..Terminators
+	Set $ZT="OnConnectTrap"
+	Set tSC=..BusinessHost.OnConnect(pTimeout)  Do:$$$ISERR(tSC) ..Disconnect()
+OnConnectTrap
+	Quit tSC
+Trap
+	Set $ZT="",tSC=$$$EnsSystemError
+	Quit $$$ERROR($$$EnsErrOutConnectException,$$$StatusText(tSC),"TCP",..IOAddr)
+]]></Implementation>
+</Method>
+
+<Method name="Disconnect">
+<Implementation><![CDATA[
+	Set $ZT="Trap",tSC=$$$OK
+	If ..Connected {
+		Set tTxt="Disconnecting from "_..IOAddr
+		If ..%logConnections { $$$LOGINFO(tTxt) } Else { $$$TRACE(tTxt) }
+	}
+	If ""=..%outIPAddr&&(""'=..Device) {
+		#; go ahead and try to disconnect even if we think we're already disconnected - we'll just trap out or fail if we already are
+		Use ..Device Write *-2
+	}
+Exit
+	Set ..IOAddr="", ..Connected=0
+	Use:$IO=..Device ..OldIO
+	Set tSpawned=(..JobPerConnection&&(""'=$ZU(53)))
+	If ""'=..Device && ((""'=..%outIPAddr)||(..QSize<=0)||tSpawned) Close ..Device  Set ..Device=""
+	Set:tSpawned ..BusinessHost.%QuitTask=1
+	Quit
+Trap
+	Set $ZT="",tSC=$$$SystemError
+	Goto Exit
+]]></Implementation>
+</Method>
+
+<Method name="TestConnection">
+<Description>
+Fix up the properties reflecting our connection state in case we thought we were connected but we lost the socket.</Description>
+<Implementation><![CDATA[
+	Quit:'..Connected	
+	Set tSC=$$$OK, $ZT="Trap"
+	Quit:$zu(189)
+Exit
+	Set tTxt = $$$StatusText($$$ERROR($$$EnsErrInConnectionLost,"TCP", ..IOAddr, $S($$$ISOK(tSC):"$zu(189)",1:$$$StatusDisplayString(tSC))))
+	If ..StayConnected<0 { $$$LOGWARNING(tTxt) } Else { If ..%logConnections { $$$LOGINFO(tTxt) } Else { $$$TRACE(tTxt) } }
+	Do ..Disconnect()
+	Quit
+Trap
+	Set $ZT="",tSC=$$$SystemError
+	Goto Exit
+]]></Implementation>
+</Method>
+
+<Method name="connectedJob">
+<Description>
+Depends on Job Per Connection Setting</Description>
+<ClassMethod>1</ClassMethod>
+<FormalSpec>pBusinessServiceConfigName:%String,pPoolLimit:%Integer</FormalSpec>
+<ReturnType>%Status</ReturnType>
+<Implementation><![CDATA[
+	#; create the adapter and business service instances
+	If pPoolLimit>1 Set ^CacheTemp.EnsTCPJobs($Job)=$ZParent  If $I(^CacheTemp.EnsTCPJobs($ZParent,"children"))
+	Quit ##class(Ens.Job).Start(pBusinessServiceConfigName,0,1) ; UnRegister will clean up & decrement child count
+]]></Implementation>
+</Method>
+
+<Method name="OnConnected">
+<Abstract>1</Abstract>
+<ReturnType>%Status</ReturnType>
+<Implementation><![CDATA[
+	#; subclass responsibility
+	Quit $$$OK
+]]></Implementation>
+</Method>
+
+<Method name="OnKeepalive">
+<FormalSpec>pUnused:%Status</FormalSpec>
+<ReturnType>%Status</ReturnType>
+<Implementation><![CDATA[
+	If ..Connected && (..StayConnected>0) && ($ZH-..BusinessHost.%LastHandledTime>=..StayConnected) {
+		Do ..Disconnect()
+		Quit $$$OK
+	}
+	Quit ##super($$$OK)
+]]></Implementation>
+</Method>
+
+<Method name="WriteLine">
+<Description>
+Copied from dc.iris.mail.TCPTextLineCommon</Description>
+<FormalSpec>pString:%String,pInbound:%Boolean=0</FormalSpec>
+<ReturnType>%Status</ReturnType>
+<Implementation><![CDATA[
+
+	Set $ZT="Trap"
+	Set:""=..%Table ..%Table=##class(%IO.I.TranslationDevice).GetCharEncodingTable(..Charset)
+	Set:"RAW"'=..%Table pString=$ZCVT(pString,"O",..%Table)
+	Write pString_$S(..%HadCR:$C(13),1:"")_..Terminators, *-3
+	
+	Quit $$$OK
+Trap
+	Set $ZT="", tZE=$ZE, tSC=$$$ERROR($$$CacheError,$G(tZE))
+	Quit tSC
+]]></Implementation>
+</Method>
+</Class>
+
+
+<Class name="mail.TCPTextLineCommon">
+<Abstract>1</Abstract>
+<ClassType/>
+<IncludeCode>Ensemble</IncludeCode>
+<ProcedureBlock>1</ProcedureBlock>
+<Super>%RegisteredObject</Super>
+<System>4</System>
+<TimeChanged>67796,81731.3910424</TimeChanged>
+<TimeCreated>67793,82941.9400114</TimeCreated>
+
+<Property name="Charset">
+<Description>
+Text Charset to use to decode incoming data and encode outgoing data</Description>
+<Type>%String</Type>
+<InitialExpression>"Default"</InitialExpression>
+</Property>
+
+<Parameter name="SETTINGS">
+<Default>Charset::selector?context={Ens.ContextSearch/CharacterSets}</Default>
+</Parameter>
+
+<Property name="%PartialLine">
+<Type>%String</Type>
+</Property>
+
+<Property name="%HadCR">
+<Description>
+Write out lines with same terminator as lines we read</Description>
+<Type>%Boolean</Type>
+</Property>
+
+<Property name="%Table">
+<Type>%String</Type>
+</Property>
+
+<Method name="WriteLine">
+<FormalSpec>pString:%String,pInbound:%Boolean=0</FormalSpec>
+<ReturnType>%Status</ReturnType>
+<Implementation><![CDATA[
+	Set $ZT="Trap"
+	Set:""=..%Table ..%Table=##class(%IO.I.TranslationDevice).GetCharEncodingTable(..Charset)
+	Set:"RAW"'=..%Table pString=$ZCVT(pString,"O",..%Table)
+	Write pString_$S(..%HadCR:$C(13),1:"")_..Terminators, *-3
+	Quit $$$OK
+Trap
+	Set $ZT="", tZE=$ZE, tSC=$$$ERROR($$$CacheError,$G(tZE))
+	Quit tSC
+]]></Implementation>
+</Method>
+
+<Method name="Write">
+<FormalSpec>pString:%String,pInbound:%Boolean=0</FormalSpec>
+<ReturnType>%Status</ReturnType>
+<Implementation><![CDATA[
+	Set $ZT="Trap"
+	Set:""=..%Table ..%Table=##class(%IO.I.TranslationDevice).GetCharEncodingTable(..Charset)
+	Set:"RAW"'=..%Table pString=$ZCVT(pString,"O",..%Table)
+	Write pString	
+	Quit $$$OK
+Trap
+	Set $ZT="", tZE=$ZE, tSC=$$$ERROR($$$CacheError,$G(tZE))
+	Quit tSC
+]]></Implementation>
+</Method>
+
+<Method name="ReadLine">
+<FormalSpec>*pLine:%String="",pTimeout:%Numeric=..ReadTimeout,pInbound:%Boolean=0</FormalSpec>
+<ReturnType>%Status</ReturnType>
+<Implementation><![CDATA[
+	Set tSC=$$$OK, $ZT="Trap"
+	If -1=pTimeout { Read tInStr  Set tTimedOut = 0 }
+	Else { Read tInStr:pTimeout  Set tTimedOut = '$Test }
+	Set tZB=$ZB
+	Set $ZT=""
+	If tTimedOut {
+		Set ..%PartialLine=..%PartialLine_tInStr
+		Quit $$$ERROR($$$EnsErrTCPTerminatedReadTimeoutExpired,pTimeout,$A(..Terminators)_$S($L(..Terminators)<2:"",1:","_$A($E(..Terminators,2))),tInStr)
+	}
+	Set tInStr=..%PartialLine_tInStr, ..%PartialLine=""
+	Set:""=..%Table ..%Table=##class(%IO.I.TranslationDevice).GetCharEncodingTable(..Charset)
+	If "RAW"'=..%Table { Set pLine=$ZCVT(tInStr,"I",..%Table) }
+	Else { Set pLine = tInStr }
+	Set ..%HadCR=(tZB=$C(13,10)||(tZB=$C(10)&&($C(13)=$E(pLine,$L(pLine)))))
+	Set:..%HadCR&&(tZB=$C(10)) $E(pLine,$L(pLine))="" ; strip off $C(13) if it came before $C(10)
+Exit
+	Quit tSC
+Trap
+	Set $ZT="", tZE=$ZE, tSC=$$$ERROR($$$CacheError,$G(tZE))
+	GoTo Exit
+]]></Implementation>
+</Method>
+</Class>
+
+
+<Class name="mail.TCPTextLineInboundAdapter">
+<ClassType/>
+<IncludeCode>Mail</IncludeCode>
+<ProcedureBlock>1</ProcedureBlock>
+<Super>mail.TCPInboundAdapter,mail.TCPTextLineCommon</Super>
+<System>4</System>
+<TimeChanged>67796,81847.0560667</TimeChanged>
+<TimeCreated>67793,82941.9744668</TimeCreated>
+<Inheritance>right</Inheritance>
+
+<Parameter name="SERVICEINPUTCLASS">
+<Default>Ens.StringContainer</Default>
+</Parameter>
+
+<Parameter name="SERVICEOUTPUTCLASS">
+<Default>Ens.StringContainer</Default>
+</Parameter>
+
+<UDLText name="T">
+<Content><![CDATA[/* override (empty) superclass initial Terminators value */
+]]></Content>
+</UDLText>
+
+<Property name="Terminators">
+<Type>%String</Type>
+<InitialExpression>$C(10)</InitialExpression>
+</Property>
+
+<Method name="OnConnected">
+<ReturnType>%Status</ReturnType>
+<Implementation><![CDATA[
+	Set tQuitErr=1  Do {
+		Set tSC=..ReadLine(.tInStr,..CallInterval,1)
+		If $$$ISERR(tSC) {
+			If ..IsReadError(tSC) {
+				Set tSC=$$$ERROR($$$EnsErrInConnectionLost,"TCP Read Line",..IOAddr,$$$StatusDisplayString(tSC))
+				Set tQuitErr=0  Do ..Disconnect()
+				If ""=tInStr Set tTxt=$$$StatusText(tSC), tSC=$$$OK  If ..StayConnected<0 { $$$LOGWARNING(tTxt) } ElseIf ..%logConnections { $$$LOGINFO(tTxt) } Else { $$$sysTRACE(tTxt) }
+			} ElseIf $$$StatusEquals(tSC,$$$EnsErrTCPTerminatedReadTimeoutExpired) {
+				If ""=tInStr { Set tSC=$$$OK } ; no error if timed out with no data
+				Else { Set tQuitErr=0 }
+			}
+			Quit
+		}
+		$$$ANEWINIOLOGENTRY($$$OK,"TCP ReadLine on :"_..IOAddr,tInStr)
+		Set tSC=..BusinessHost.ProcessInput(##class(Ens.StringContainer).%New(tInStr), .tStringOut)  Quit:$$$ISERR(tSC)
+		If $D(tStringOut) {
+			If $IsObject(tStringOut) {
+				$$$ASSERT(tStringOut.%Extends("Ens.StringContainer"))
+				Set tStringOut=tStringOut.StringValue
+			}
+		} Else { Set tStringOut="" }
+		If $$$ISERR(tSC) {
+			$$$ACLOSEIOLOGENTRY(tSC,"after TCP TextLine ProcessInput error on :"_..IOAddr,tStringOut)
+			Quit
+		}
+		If ""'=tStringOut {
+			Set tSC=..WriteLine(tStringOut,1)
+			Set tDisconnect = $Extract($$$MMResponseQUIT,1,3)
+			If (tDisconnect	= $Extract(tStringOut,1,3)) {
+				Do ..Disconnect()
+			}
+			If $$$ISERR(tSC) {
+				If ..IsWriteError(tSC) {
+					Set tSC=$$$ERROR($$$EnsErrInConnectionLost,"TCP Write Line",..IOAddr,$$$StatusDisplayString(tSC))
+					Set tQuitErr=0  Do ..Disconnect()
+				}
+				$$$ACLOSEIOLOGENTRY(tSC,"after TCP WriteLine error on :"_..IOAddr,tStringOut)
+				Quit
+			}
+			$$$ACLOSEIOLOGENTRY(tSC,"after TCP WriteLine on :"_..IOAddr,tStringOut)
+		} Else {
+			$$$ACLOSEIOLOGENTRY(tSC,"after TCP ProcessInput on :"_..IOAddr,"")
+		}
+	} While 0
+	If $$$ISERR(tSC) {
+		#; Never quit the listener, but drop the connection on unrecognized error
+		If tQuitErr&&..Connected&&..StayConnected { $$$LOGERROR("Disconnecting due to "_$$$StatusDisplayString(tSC)) Set tSC=$$$OK  Do ..Disconnect() }
+		If $$$ISERR(tSC) $$$LOGSTATUS(tSC)
+	}
+	Quit $$$OK
+]]></Implementation>
+</Method>
+</Class>
+
+
+<Class name="mail.Util">
+<IncludeCode>Mail</IncludeCode>
+<TimeChanged>67796,56456.9000256</TimeChanged>
+<TimeCreated>67793,82942.0048219</TimeCreated>
+
+<Method name="DebugMM">
+<ClassMethod>1</ClassMethod>
+<FormalSpec>strMessage:%String=""</FormalSpec>
+<ReturnType>%Status</ReturnType>
+<Implementation><![CDATA[
+	$$$TRACE(strMessage)
+	Quit $$$OK
+]]></Implementation>
+</Method>
+
+<Method name="DebugTEST">
+<ClassMethod>1</ClassMethod>
+<FormalSpec>strMessage:%String=""</FormalSpec>
+<ReturnType>%Status</ReturnType>
+<Implementation><![CDATA[
+	$$$TRACE(strMessage)
+	Quit $$$OK
+]]></Implementation>
+</Method>
+
+<Method name="StatusToText">
+<ClassMethod>1</ClassMethod>
+<FormalSpec>pStatus:%Status</FormalSpec>
+<ReturnType>%String</ReturnType>
+<Implementation><![CDATA[
+	Set tReturn = $System.Status.GetOneErrorText(pStatus)
+	Quit tReturn
+]]></Implementation>
+</Method>
+
+<Method name="DebugStatus">
+<ClassMethod>1</ClassMethod>
+<FormalSpec>pStatus:%Status</FormalSpec>
+<ReturnType>%Status</ReturnType>
+<Implementation><![CDATA[
+	Set tStatus = ..StatusToText(pStatus)
+	Quit ..DebugTEST(tStatus)
+]]></Implementation>
+</Method>
+
+<Method name="InitMessageID">
+<ClassMethod>1</ClassMethod>
+<FormalSpec>pMessageID:%String=""</FormalSpec>
+<ReturnType>%Status</ReturnType>
+<Implementation><![CDATA[
+	If ($Get(^irisMessageID) '= "") Quit $$$ERROR($$$GeneralError,"MessageID already set.")
+	Set ^irisMessageID = pMessageID  // Initial Value
+	Quit $$$OK
+]]></Implementation>
+</Method>
+
+<Method name="GenerateMessageDate">
+<ClassMethod>1</ClassMethod>
+<FormalSpec>pDomain:%String=""</FormalSpec>
+<ReturnType>%String</ReturnType>
+<Implementation><![CDATA[
+	// Example: "Date: 31 Mar 2020 12:04:01 -0500 (CDT)"
+	Set tDate = $ZDateTime($Horolog,2)
+	Set tFormatted = "Date: " _ tDate _ " -0500 (CDT)"
+	Quit tFormatted
+]]></Implementation>
+</Method>
+
+<Method name="GenerateMessageID">
+<ClassMethod>1</ClassMethod>
+<FormalSpec>pDomain:%String=""</FormalSpec>
+<ReturnType>%String</ReturnType>
+<Implementation><![CDATA[
+	If ($Get(^irisMessageID) = "") Set ^irisMessageID = 0  // Initial Value
+	Set tID = $Increment(^irisMessageID)
+	Quit tID
+]]></Implementation>
+</Method>
+
+<Method name="GenerateMessageIDFormatted">
+<ClassMethod>1</ClassMethod>
+<FormalSpec>pDomain:%String=""</FormalSpec>
+<ReturnType>%String</ReturnType>
+<Implementation><![CDATA[
+	Set tID = ..GenerateMessageID()
+	Quit ..GetFormattedMessageID(tID,pDomain)
+]]></Implementation>
+</Method>
+
+<Method name="GetFormattedMessageID">
+<ClassMethod>1</ClassMethod>
+<FormalSpec>pMessageID:%String="",pDomain:%String=""</FormalSpec>
+<ReturnType>%String</ReturnType>
+<Implementation><![CDATA[
+	// Example: "Message-ID: <1189.3200331@DMLSS.VA.GOV>"
+	If ($Get(pMessageID) = "") Set pMessageID = 0  // Initial Value
+	Set tID = pMessageID _ ".3" _ $Extract($ZDate($Horolog,8),3,8)
+	Set tFormatted = "Message-ID: <" _ tID _ "@" _ pDomain _ ">"
+	Quit tFormatted
+]]></Implementation>
+</Method>
+</Class>
+
+
+<Routine name="smtp" type="MAC" languagemode="0" timestamp="67796,83036.1835661"><![CDATA[
+mail ;
+	s %mail=##class(%Net.MailMessage).%New()
+	s %mail.From="iris@home.at"
+	s %mail.Sender="iris@home.at"
+	s %mail.Subject="Test from ISOS"
+	d %mail.TextData.WriteLine("demo test mail from ISOS")
+	d %mail.TextData.WriteLine("more text from ISOS")
+	s %mail.MessageSize=%mail.TextData.SizeGet()
+	d %mail.To.Insert("irisowner")
+ ;;
+	s %smtp=##class(%Net.SMTP).%New()
+	; s %smtp.smtpserver="192.168.0.11"
+	s %smtp.smtpserver="localhost"
+	s %smtp.port=30025
+	q
+start
+	w ##class(Ens.Director).StartProduction("mail.Receive")
+	q
+send
+	s sc=%smtp.Send(%mail)
+	zw sc
+	q	
+view
+	zw ^txt
+	q
+stop
+	w ##class(Ens.Director).StopProduction()
+	q	
+]]></Routine>
+</Export>

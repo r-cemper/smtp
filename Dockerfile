@@ -1,15 +1,8 @@
-ARG IMAGE=intersystemsdc/iris-community:latest
-FROM $IMAGE
+FROM intersystemsdc/iris-community
 
-WORKDIR /opt/irisbuild
-RUN chown ${ISC_PACKAGE_MGRUSER}:${ISC_PACKAGE_IRISGROUP} /opt/irisbuild
+WORKDIR /home/irisowner/dev
 
-USER ${ISC_PACKAGE_MGRUSER}
-
-COPY src src
-COPY module.xml module.xml
-COPY iris.script iris.script
-
-RUN iris start IRIS \
-	&& iris session IRIS < iris.script \
-    && iris stop IRIS quietly 
+RUN --mount=type=bind,src=.,dst=. \
+    iris start IRIS && \
+	iris session IRIS < iris.script && \
+    iris stop IRIS quietly
