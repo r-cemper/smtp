@@ -122,3 +122,5 @@ ERROR #6031: Unable to open TCP/IP connection.
 
 Access to [System Management Portal](http://localhost:52773/csp/sys/%25CSP.Portal.Home.zen?$NAMESPACE=USER) 
 and [Interoperability Portal](http://localhost:52773/csp/user/EnsPortal.ProductionConfig.zen?$NAMESPACE=USER&PRODUCTION=mail.Receive)
+
+[Article](https://community.intersystems.com/post/mail-sending-beginners)
