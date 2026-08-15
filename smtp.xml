@@ -1121,6 +1121,7 @@ start
 send
 	s sc=%smtp.Send(%mail)
 	zw sc
+	i 'sc d $system.OBJ.DisplayError(sc)
 	q	
 view
 	zw ^txt
