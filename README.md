@@ -26,16 +26,13 @@ Clone/git pull the repo into any local directory:
 ```
 https://github.com/rcemper/smtp.git
 ```
-Build the Docker container from the download directory:    
-```
-docker compose --progress plain build
-```
-Run the IRIS container with your project and check startup:    
+Build and run the IRIS container  
+from the download directory with your project and check startup:    
 ```
 docker-compose up -d   && docker-compose logs -f
 ```
 ### Testing   
-Start an IRIS sess in namespace USER
+Start an IRIS session in namespace USER
 ```
 docker-compose exec iris iris session iris
 ```
